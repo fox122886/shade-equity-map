@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>臺北樹蔭公平地圖</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@800&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 版面：整頁是 OSM 地圖，左側（手機為底部抽屜）是決策面板，右上是路段／目的地資料卡 */
+:root{
+  --bg:#e9ede6; --paper:#f8faf5; --ink:#1d2a22; --muted:#5d6b61; --line:#cfd8cc;
+  --accent:#2d6a45; --accent-soft:#dbe8dd; --warn:#b4372f; --sim:#8a5a00; --sim-soft:#f6e7c8; --halo:rgba(248,250,245,.9);
+  --f-display:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#131a16; --paper:#1b241f; --ink:#e3eae2; --muted:#9aa89d; --line:#2e3b33;
+  --accent:#7fc497; --accent-soft:#24362b; --warn:#f07466; --sim:#f2c46b; --sim-soft:#3a3120; --halo:rgba(19,26,22,.9); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--f-body);overflow:hidden}
+#app{position:relative;height:100%}
+#map{position:absolute;inset:0;background:var(--bg)}
+#cv{position:absolute;inset:0;pointer-events:none;z-index:450}
+.leaflet-container{font-family:var(--f-body)}
+.leaflet-bar a,.leaflet-control-layers,.leaflet-control-scale-line{background:var(--paper);color:var(--ink);border-color:var(--line)}
+.leaflet-control-attribution{background:var(--halo)!important;color:var(--muted)}
+.leaflet-control-attribution a{color:var(--accent)}
+.tiles-gray{filter:grayscale(1) brightness(1.04) contrast(.92)}
+.tiles-dark{filter:invert(1) hue-rotate(180deg) grayscale(.55) brightness(.88) contrast(.9)}
+
+#panel{position:absolute;top:12px;left:max(12px,env(safe-area-inset-left,0px));bottom:12px;width:356px;z-index:1000;
+  background:var(--paper);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.14);display:flex;flex-direction:column;overflow:hidden}
+.phead{position:relative;padding:14px 18px 12px;border-bottom:1px solid var(--line)}
+.eyebrow{font:500 11px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font:800 22px/1.25 var(--f-display);margin:6px 0 4px}
+.sub{font-size:12.5px;color:var(--muted)}
+.hbtns{position:absolute;top:10px;right:14px;display:flex;gap:6px}
+.pill{font:inherit;font-size:12.5px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;white-space:nowrap}
+#sheetBtn{display:none}
+.pbody{overflow-y:auto;padding:14px 18px 18px;display:flex;flex-direction:column;gap:18px;min-height:0}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:var(--accent-soft);border-radius:8px;padding:9px 11px;min-width:0}
+.kpi b{display:block;font:500 21px/1.15 var(--f-mono);font-variant-numeric:tabular-nums}
+.kpi span{display:block;font-size:11.5px;color:var(--muted);line-height:1.35}
+.kpi.wide{grid-column:1/-1}
+.kpi .vs{display:flex;align-items:baseline;gap:8px}
+.kpi .vs s{font:500 15px var(--f-mono);color:var(--muted)}
+.sec{display:flex;flex-direction:column;gap:8px}
+.lab{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em;display:flex;align-items:center;gap:6px}
+.sim{font:500 10.5px/1 var(--f-body);padding:3px 6px;border-radius:4px;background:var(--sim-soft);color:var(--sim);letter-spacing:0;font-weight:700}
+.est{font:500 10.5px/1 var(--f-body);padding:3px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent);font-weight:700}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{font:inherit;font-size:12.5px;padding:7px 0;border:0;background:transparent;color:var(--ink);cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--paper);font-weight:700}
+.legend{display:flex;flex-direction:column;gap:4px}
+.ramp{height:10px;border-radius:5px}
+.rampl{display:flex;justify-content:space-between;font:11px var(--f-mono);color:var(--muted)}
+.cats{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:12.5px}
+.cats span{display:flex;align-items:center;gap:6px}
+.cats i{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.sl{display:grid;grid-template-columns:5.6em 1fr 3.2em;gap:8px;align-items:center;font-size:12.5px}
+.sl input{width:100%;accent-color:var(--accent)}
+.sl em{font:normal 12px var(--f-mono);text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+.chk input{accent-color:var(--accent);margin:0}
+select,input[type=search]{width:100%;font:inherit;font-size:13.5px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.btn{font:inherit;font-size:13px;font-weight:700;padding:8px 10px;border-radius:8px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer}
+.btn.solid{background:var(--accent);color:var(--paper)}
+.btn:hover{background:var(--accent-soft)}.btn.solid:hover{filter:brightness(1.08);background:var(--accent)}
+.top{display:flex;flex-direction:column;gap:2px}
+.ti{display:grid;grid-template-columns:1.6em 1fr auto;gap:8px;align-items:center;font:inherit;font-size:12.5px;padding:5px 6px;border:0;border-radius:6px;background:transparent;color:var(--ink);text-align:left;cursor:pointer}
+.ti:hover{background:var(--accent-soft)}
+.ti b{font:500 11.5px var(--f-mono);color:var(--muted)}
+.ti span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ti em{font:normal 12px var(--f-mono);font-variant-numeric:tabular-nums}
+.dests{display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+.dl{display:flex;align-items:center;gap:8px}
+.dl i{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.dl span{flex:1}
+.dl em{font:normal 12px var(--f-mono);color:var(--muted)}
+.note{font-size:11.5px;color:var(--muted);line-height:1.65;border-top:1px solid var(--line);padding-top:10px}
+.note b{color:var(--ink)}
+
+#detail{position:absolute;right:max(12px,env(safe-area-inset-right,0px));top:12px;width:330px;max-height:calc(100% - 24px);overflow:auto;z-index:1000;
+  background:var(--paper);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.16);padding:14px 16px}
+#detail h2{font:800 19px/1.25 var(--f-display);margin:2px 28px 2px 0}
+#detail .x{position:absolute;top:8px;right:8px;border:0;background:transparent;font-size:18px;color:var(--muted);cursor:pointer;width:30px;height:30px}
+.dsub{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.score{display:flex;align-items:center;gap:10px;margin:6px 0 12px}
+.score b{font:500 30px/1 var(--f-mono)}
+.score .bar{flex:1;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.score .bar span{display:block;height:100%}
+.act{display:inline-block;font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:999px;margin-bottom:6px}
+.why{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+.dl2{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:0;font-size:12.5px}
+.dl2 dt{color:var(--muted)} .dl2 dd{margin:0;font-variant-numeric:tabular-nums}
+.dl2 .h{grid-column:1/-1;font-size:11.5px;font-weight:700;color:var(--muted);letter-spacing:.05em;border-top:1px solid var(--line);padding-top:8px;margin-top:4px}
+.mono{font-family:var(--f-mono)}
+.mini{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+
+#loading{position:absolute;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--ink);text-align:center;font-size:15px;line-height:1.8}
+#loading b{font:800 20px var(--f-display)}
+#toast{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom,0px));z-index:2100;background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:8px;font-size:13.5px;max-width:calc(100% - 32px)}
+#dragOverlay{position:absolute;inset:0;z-index:2000;background:rgba(45,106,69,.18);border:3px dashed var(--accent);display:flex;align-items:center;justify-content:center;pointer-events:none}
+#dragOverlay div{background:var(--paper);padding:14px 22px;border-radius:10px;font-weight:700}
+
+#dash{position:absolute;inset:16px;z-index:1600;background:var(--paper);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden}
+.dhead{display:flex;align-items:flex-start;gap:16px;padding:16px 20px 12px;border-bottom:1px solid var(--line)}
+.dhead>div{flex:1;min-width:0}
+.dhead h2{font:800 21px/1.25 var(--f-display);margin:4px 0 2px}
+.dbody{overflow:auto;padding:16px 20px 24px;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:20px 24px;align-content:start}
+.dbody .full{grid-column:1/-1}
+.dk{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.dk .kpi b{font-size:19px}
+.dcard{border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.dcard h3{font-size:13px;font-weight:700;margin:0 0 4px}
+.dcard .sub{margin-bottom:8px}
+.tw{overflow-x:auto}
+table.dt{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.dt th{font-weight:700;color:var(--muted);text-align:right;padding:5px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+.dt th:first-child,.dt td:first-child{text-align:left}
+.dt td{text-align:right;padding:5px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+.dt tr.click{cursor:pointer}.dt tr.click:hover td{background:var(--accent-soft)}
+.dt tr.on td{background:var(--accent-soft);font-weight:700}
+.cell-bar{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.cell-bar i{display:block;height:8px;border-radius:4px;background:var(--accent)}
+.stack{display:flex;height:16px;border-radius:5px;overflow:hidden;margin:6px 0 8px}
+.stack span{display:block;height:100%}
+.sens{display:grid;grid-template-columns:auto 1fr auto;gap:6px 10px;align-items:center;font-size:12.5px}
+.sens i{display:block;height:10px;border-radius:5px;background:var(--warn)}
+.sens em{font:normal 12px var(--f-mono);font-variant-numeric:tabular-nums}
+textarea#rep{width:100%;min-height:260px;font:12.5px/1.6 var(--f-mono);padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);resize:vertical}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.steps{display:flex;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.steps span{padding:3px 8px;border-radius:999px;border:1px solid var(--line)}
+.steps span.on{background:var(--accent);color:var(--paper);border-color:var(--accent);font-weight:700}
+@media (max-width:900px){.dbody{grid-template-columns:minmax(0,1fr)}.dk{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:720px){#dash{inset:8px}.dk{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:720px){
+  #panel{top:auto;left:0;right:0;bottom:0;width:auto;max-height:62%;border-radius:14px 14px 0 0;border-bottom:0;padding-bottom:env(safe-area-inset-bottom,0px);transition:transform .25s ease}
+  #panel.collapsed{transform:translateY(calc(100% - 62px - env(safe-area-inset-bottom,0px)))}
+  .phead .sub{display:none} h1{font-size:18px;margin:2px 0 0} .hbtns{top:12px}
+  #sheetBtn{display:block}
+  .pbody{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  #detail{left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));top:calc(12px + env(safe-area-inset-top,0px));width:auto;max-height:45%}
+}
+@media (prefers-reduced-motion:reduce){#panel{transition:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="loading"><div><b>臺北樹蔭公平地圖</b><br>載入資料中，約需數秒⋯</div></div>
+  <div id="map" aria-label="地圖"></div>
+
+  <aside id="panel">
+    <div class="phead">
+      <div class="eyebrow">市政 debug 松 · 題目 #1</div>
+      <h1>臺北樹蔭公平地圖</h1>
+      <div class="sub">每段人行道算一個優先分數：缺蔭越嚴重、越熱、越多人使用，分數越高。點路段看原因與建議做法。</div>
+      <div class="hbtns"><button id="themeBtn" class="pill" type="button">☾ 深色</button><button id="sheetBtn" class="pill" type="button">收合</button></div>
+    </div>
+    <div class="pbody">
+      <div class="kpis">
+        <div class="kpi wide"><div class="vs"><b id="kShade">–</b><s id="kNaive">–</s></div><span>人行道平均有效樹蔭率。刪除線是「數樹」的估計，把分隔島與綠帶的樹也算進來，會高估約一倍</span></div>
+        <div class="kpi"><b id="kAll">–</b><span>合計遮蔭率（樹蔭加騎樓折算）</span></div>
+        <div class="kpi"><b id="kTrees">–</b><span id="kTreesL">棵行道樹真正遮到人行道</span></div>
+        <div class="kpi wide"><b id="kHigh">–</b><span>段高優先路段（分數 ≥ 50，依目前篩選與權重）</span></div>
+      </div>
+
+      <div class="sec">
+        <div class="lab">地圖顯示</div>
+        <div class="seg" id="mode">
+          <button type="button" data-m="score" aria-pressed="true">優先分數</button>
+          <button type="button" data-m="shade" aria-pressed="false">有效遮蔭</button>
+          <button type="button" data-m="naive" aria-pressed="false">數樹估計</button>
+          <button type="button" data-m="action" aria-pressed="false">行動類型</button>
+        </div>
+        <div class="legend" id="legend"></div>
+      </div>
+
+      <div class="sec">
+        <div class="lab">優先分數的設定</div>
+        <div class="sl"><label for="T">目標遮蔭率</label><input type="range" id="T" min="10" max="60" step="5" value="30"><em id="Tv">30%</em></div>
+        <div class="sl"><label for="wH">熱暴露</label><input type="range" id="wH" min="0" max="3" step="0.5" value="1"><em id="wHv">1</em></div>
+        <div class="sl"><label for="wU">使用強度</label><input type="range" id="wU" min="0" max="3" step="0.5" value="1"><em id="wUv">1</em></div>
+        <label class="chk"><input type="checkbox" id="arcOn" checked> 騎樓算進遮蔭 <span class="sim">模擬資料</span></label>
+        <div class="sl" id="arcRow"><label for="arcK">騎樓折算</label><input type="range" id="arcK" min="0" max="100" step="10" value="60"><em id="arcKv">60%</em></div>
+      </div>
+
+      <div class="sec">
+        <div class="lab">篩選</div>
+        <div class="row2">
+          <select id="fDist" aria-label="行政區"><option value="">全部行政區</option></select>
+          <select id="fRoad" aria-label="路寬"><option value="0">全部路寬</option><option value="10">路寬 10 公尺以上</option><option value="15">路寬 15 公尺以上</option><option value="20">路寬 20 公尺以上</option></select>
+        </div>
+        <label class="chk"><input type="checkbox" id="fNear"> 只看目的地步行 400 公尺內 <span class="est">直線近似</span></label>
+      </div>
+
+      <div class="sec">
+        <div class="lab">步行目的地</div>
+        <div class="dests" id="dests"></div>
+        <input type="search" id="destQ" list="destList" placeholder="搜尋目的地，看 400 公尺報告卡">
+        <datalist id="destList"></datalist>
+        <div class="row2">
+          <select id="destType" aria-label="匯入類型"><option value="mrt">捷運出入口</option><option value="school">學校</option><option value="bus">公車站</option><option value="other">其他</option></select>
+          <label class="btn" style="text-align:center">匯入 CSV<input type="file" id="destFile" accept=".csv,.json,.txt" hidden></label>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="lab">優先清單（依目前篩選）</div>
+        <div class="top" id="top"></div>
+        <button type="button" class="btn solid" id="dashBtn">開啟儀表板與植樹提案單</button>
+        <button type="button" class="btn" id="exportBtn">匯出優先清單 CSV</button>
+      </div>
+
+      <div class="sec">
+        <div class="lab">圖層</div>
+        <label class="chk"><input type="checkbox" id="lyTrees" checked> 行道樹（依位置分類，放大後顯示）</label>
+        <label class="chk"><input type="checkbox" id="lyParks" checked> 公園</label>
+        <label class="chk"><input type="checkbox" id="lyUR"> 都更、危老基地 <span class="sim">模擬資料</span></label>
+        <label class="chk"><input type="checkbox" id="lyPipe"> 地下管線衝突（外掛圖層） <span class="sim">模擬資料</span></label>
+        <div class="sl"><label for="dimIn">底圖濃淡</label><input type="range" id="dimIn" min="20" max="100" step="5" value="70"><em id="dimOut">70%</em></div>
+      </div>
+
+      <div class="note" id="note"></div>
+    </div>
+  </aside>
+
+  <div id="detail" hidden></div>
+  <section id="dash" hidden aria-label="儀表板">
+    <div class="dhead"><div>
+      <div class="steps"><span>1 找問題</span><span>2 定條件</span><span class="on">3 比方案</span><span class="on">4 出提案</span><span>5 現場確認</span><span>6 列入計畫</span><span>7 追蹤成效</span></div>
+      <h2 id="dTitle">儀表板</h2><div class="sub" id="dScope"></div></div>
+      <button type="button" class="pill" id="dashClose">回到地圖</button></div>
+    <div class="dbody" id="dBody"></div>
+  </section>
+  <div id="toast" hidden></div>
+  <div id="dragOverlay" hidden><div>放開以匯入目的地 CSV</div></div>
+</div>
+
+<script type="application/json" id="data">__DATA__</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+<script>
+function APP(D){
+'use strict';
+/* 資料由下方載入器傳入 */
+const M=D.meta,S=D.seg,N=M.n_seg;
+const E=20037508.342789244;
+function dec(s,T){const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new T(u.buffer);}
+const nf=v=>Number(v).toLocaleString('zh-TW');
+const pc=v=>Math.round(v*100)+'%';
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- 解碼：地圖座標（Web Mercator 正規化 u,v） ---------- */
+const VX=dec(S.vx,Int32Array),VY=dec(S.vy,Int32Array),RING=dec(S.ring,Uint32Array),SR=dec(S.segring,Uint32Array);
+const NV=VX.length,U=new Float64Array(NV),V=new Float64Array(NV);
+for(let i=0;i<NV;i++){U[i]=(VX[i]/10+M.mx0+E)/(2*E);V[i]=(E-(VY[i]/10+M.my0))/(2*E);}
+const BB=new Float64Array(N*4);
+for(let s=0;s<N;s++){let a=1,b=1,c=0,d=0;for(let r=SR[s];r<SR[s+1];r++)for(let k=RING[r];k<RING[r+1];k++){if(U[k]<a)a=U[k];if(U[k]>c)c=U[k];if(V[k]<b)b=V[k];if(V[k]>d)d=V[k];}BB[s*4]=a;BB[s*4+1]=b;BB[s*4+2]=c;BB[s*4+3]=d;}
+// 路段中心（公尺，Mercator）與緯度修正
+const CX=Float64Array.from(S.cx,v=>v+M.mx0),CY=Float64Array.from(S.cy,v=>v+M.my0);
+const latOf=y=>Math.atan(Math.sinh(y/6378137))*180/Math.PI;
+const COS=Math.cos(latOf((CY[0]+CY[N-1])/2)*Math.PI/180);
+const TX=dec(D.tree.x,Int32Array),TY=dec(D.tree.y,Int32Array),TC=dec(D.tree.cls,Uint8Array),TR=dec(D.tree.r,Uint8Array);
+const NT=TX.length,TU=new Float64Array(NT),TV=new Float64Array(NT);
+for(let i=0;i<NT;i++){TU[i]=(TX[i]/10+M.mx0+E)/(2*E);TV[i]=(E-(TY[i]/10+M.my0))/(2*E);}
+const toUV=(mx,my)=>[(mx+E)/(2*E),(E-my)/(2*E)];
+
+/* ---------- 路段格網索引（中心點，200 公尺） ---------- */
+const CELL=200,grid=new Map();
+const gk=(x,y)=>Math.floor(x/CELL)*1e6+Math.floor(y/CELL);
+for(let s=0;s<N;s++){const k=gk(CX[s],CY[s]);let a=grid.get(k);if(!a)grid.set(k,a=[]);a.push(s);}
+function segsNear(mx,my,rTrue){const r=rTrue/COS,out=[];
+  for(let gx=Math.floor((mx-r)/CELL);gx<=Math.floor((mx+r)/CELL);gx++)for(let gy=Math.floor((my-r)/CELL);gy<=Math.floor((my+r)/CELL);gy++){
+    const a=grid.get(gx*1e6+gy);if(!a)continue;for(const s of a){const dx=CX[s]-mx,dy=CY[s]-my;if(dx*dx+dy*dy<=r*r)out.push(s);}}
+  return out;}
+
+/* ---------- 目的地 ---------- */
+const DEST_TYPES={mrt:{name:'捷運出入口',w:1,color:'#1b7f9e'},school:{name:'學校',w:1,color:'#c97a06'},bus:{name:'公車站',w:.6,color:'#7d68b8'},
+  park:{name:'公園',w:.4,color:'#2f7d4f'},other:{name:'其他',w:.5,color:'#b4372f'}};
+const dests=[];   // {type,name,mx,my,real}
+D.park.x.forEach((x,i)=>dests.push({type:'park',name:D.park.name[i],mx:x+M.mx0,my:D.park.y[i]+M.my0,real:true,dist:D.park.dist[i]}));
+const RADIUS=400;
+let near=new Float32Array(N),nearAny=new Uint8Array(N);
+function computeU(){
+  near=new Float32Array(N);nearAny=new Uint8Array(N);
+  for(const d of dests){const w=DEST_TYPES[d.type].w;for(const s of segsNear(d.mx,d.my,RADIUS)){near[s]+=w;if(d.type!=='park')nearAny[s]=1;}}
+  // 只有公園時，公園也算目的地
+  if(!dests.some(d=>d.type!=='park'))for(let s=0;s<N;s++)if(near[s]>0)nearAny[s]=1;
+}
+
+/* ---------- 計分 ---------- */
+const st=S.st,arc=S.arc,H=S.H;
+const P={T:.3,wH:1,wU:1,arcOn:true,arcK:.6,dist:'',road:0,near:false,pipeOn:false};
+const shade=new Float32Array(N),score=new Float32Array(N),act=new Uint8Array(N),pass=new Uint8Array(N);
+const ACT=[{name:'可直接種',color:'#2f8f5b'},{name:'需工程',color:'#c97a06'},{name:'等重建',color:'#7d68b8'},{name:'短期替代',color:'#b4372f'},{name:'已達標',color:'#9aa39b'}];
+function action(s){
+  if(shade[s]>=P.T)return 4;
+  const w=S.width[s],pipe=P.pipeOn&&S.pipe[s];
+  if(S.eh[s]>0&&!pipe)return 0;
+  if(w>=3&&!pipe)return 0;
+  if(S.ur[s]>=0)return 2;
+  if(w>=2||pipe)return 1;
+  return 3;
+}
+function recompute(){
+  const ws=P.wH+P.wU||1;
+  for(let s=0;s<N;s++){
+    const a=P.arcOn?P.arcK*arc[s]*(1-st[s]):0;
+    shade[s]=Math.min(1,st[s]+a);
+    const gap=Math.max(0,(P.T-shade[s])/P.T);
+    const u=Math.min(1,near[s]/1.5);
+    score[s]=100*gap*(P.wH*H[s]+P.wU*u)/ws;
+    act[s]=action(s);
+    const rw=S.roadw[s];
+    pass[s]=(!P.dist||S.dist[s]===P.dist)&&(!P.road||(rw!=null&&rw>=P.road))&&(!P.near||nearAny[s])?1:0;
+  }
+  updateKPI();renderTop();renderLegend();if(sel)showDetail();if(selD)showDest();cache=null;draw();
+}
+
+/* ---------- 顏色 ---------- */
+const RAMP={
+  score:{light:['#f3ecc9','#f2c46b','#e8893a','#cc4b2c','#8e1f2b'],dark:['#3a3a2a','#8a6a2a','#c8742e','#e85a3a','#ff8a7a']},
+  shade:{light:['#a8432d','#d98b4a','#e8d58a','#8cc07a','#2f7d4f'],dark:['#c4573e','#d98b4a','#d8c870','#78c07a','#5fd69a']},
+};
+let theme='light';
+const ramp=m=>RAMP[m][theme==='dark'?'dark':'light'];
+function bucket(v){return Math.max(0,Math.min(4,Math.floor(v*5)));}
+let mode='score';
+function colorIdx(s){
+  if(mode==='score')return bucket(score[s]/100);
+  if(mode==='shade')return bucket(shade[s]/0.5);
+  if(mode==='naive')return bucket(S.naive[s]/0.5);
+  return act[s];
+}
+function palette(){return mode==='action'?ACT.map(a=>a.color):ramp(mode==='naive'?'shade':mode);}
+
+/* ---------- 地圖 ---------- */
+const map=L.map('map',{zoomControl:false,zoomAnimation:false,preferCanvas:true}).setView([25.045,121.535],13);
+const ATTR='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 貢獻者';
+const tUrl='https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const osmL=L.tileLayer(tUrl,{maxZoom:19,attribution:ATTR,className:'tiles-gray'});
+const osmD=L.tileLayer(tUrl,{maxZoom:19,attribution:ATTR,className:'tiles-dark'});
+const osmC=L.tileLayer(tUrl,{maxZoom:19,attribution:ATTR});
+L.control.layers({'OpenStreetMap 灰階':osmL,'OpenStreetMap 深色':osmD,'OpenStreetMap 標準':osmC},null,{position:'bottomright'}).addTo(map);
+L.control.zoom({position:'bottomright',zoomInTitle:'放大',zoomOutTitle:'縮小'}).addTo(map);
+L.control.scale({position:'bottomright',imperial:false}).addTo(map);
+const cv=document.createElement('canvas');cv.id='cv';map.getContainer().appendChild(cv);
+const ctx=cv.getContext('2d');let W=0,Hh=0,dpr=1;
+function resize(){dpr=window.devicePixelRatio||1;W=map.getContainer().clientWidth;Hh=map.getContainer().clientHeight;cv.width=Math.round(W*dpr);cv.height=Math.round(Hh*dpr);cv.style.width=W+'px';cv.style.height=Hh+'px';cache=null;draw();}
+new ResizeObserver(()=>{map.invalidateSize({pan:false});resize();}).observe(map.getContainer());
+function view(){const z=map.getZoom(),Sz=256*Math.pow(2,z),o=map.containerPointToLayerPoint([0,0]).add(map.getPixelOrigin());return {z,S:Sz,ox:o.x,oy:o.y};}
+let raf=0,cache=null;const draw=()=>{if(!raf)raf=requestAnimationFrame(render);};
+map.on('move zoom viewreset resize',draw);
+
+let sel=-1,selD=null;
+function paintSegs(g,Sz,ox,oy,w,h,z){
+  const pal=palette(),fills=pal.map(()=>new Path2D()),dim=new Path2D();
+  for(let s=0;s<N;s++){
+    const x0=BB[s*4]*Sz-ox,y0=BB[s*4+1]*Sz-oy,x1=BB[s*4+2]*Sz-ox,y1=BB[s*4+3]*Sz-oy;
+    if(x1<-4||y1<-4||x0>w+4||y0>h+4)continue;
+    const p=pass[s]?fills[colorIdx(s)]:dim;
+    if(x1-x0<1.6&&y1-y0<1.6){p.rect((x0+x1)/2-1,(y0+y1)/2-1,2,2);continue;}
+    for(let r=SR[s];r<SR[s+1];r++){const a=RING[r],b=RING[r+1];p.moveTo(U[a]*Sz-ox,V[a]*Sz-oy);let lx=0,ly=0;
+      for(let k=a+1;k<b;k++){const x=U[k]*Sz-ox,y=V[k]*Sz-oy;if(k<b-1&&Math.abs(x-lx)+Math.abs(y-ly)<.7)continue;p.lineTo(x,y);lx=x;ly=y;}p.closePath();}
+  }
+  g.lineJoin='round';
+  g.globalAlpha=.35;g.fillStyle=g.strokeStyle=theme==='dark'?'#56635a':'#b9c2b7';g.fill(dim);g.lineWidth=1;g.stroke(dim);g.globalAlpha=1;
+  const lw=z>=17?1:z>=15?1.6:2.2;
+  pal.forEach((c,i)=>{g.fillStyle=c;g.strokeStyle=c;g.globalAlpha=.88;g.fill(fills[i]);g.globalAlpha=1;g.lineWidth=lw;g.stroke(fills[i]);});
+}
+function render(){
+  raf=0;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);
+  const {z,S:Sz,ox,oy}=view();
+  // 路段：畫在比畫面大一圈的暫存圖上，平移時直接貼上
+  const key=z+'|'+mode+'|'+theme+'|'+dpr;
+  if(!cache||cache.key!==key||ox<cache.ox||oy<cache.oy||ox+W>cache.ox+cache.w||oy+Hh>cache.oy+cache.h){
+    const Mg=300;cache=cache&&cache.key===key?cache:{cv:document.createElement('canvas')};
+    cache.key=key;cache.ox=ox-Mg;cache.oy=oy-Mg;cache.w=W+2*Mg;cache.h=Hh+2*Mg;
+    cache.cv.width=Math.round(cache.w*dpr);cache.cv.height=Math.round(cache.h*dpr);
+    const g=cache.cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,cache.w,cache.h);paintSegs(g,Sz,cache.ox,cache.oy,cache.w,cache.h,z);
+  }
+  ctx.drawImage(cache.cv,Math.round((cache.ox-ox)*dpr),Math.round((cache.oy-oy)*dpr));
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  // 行道樹（放大到 16 級以上）
+  if(lay.trees&&z>=16){
+    const mpp=40075016.68*COS/Sz;const cols=theme==='dark'?['#5fd69a','#f2b440','#8a978d']:['#1f7a46','#d9822b','#8a948c'];
+    const ps=[new Path2D(),new Path2D(),new Path2D()];
+    for(let i=0;i<NT;i++){const x=TU[i]*Sz-ox,y=TV[i]*Sz-oy;if(x<-20||y<-20||x>W+20||y>Hh+20)continue;const r=Math.max(2,TR[i]/10/mpp);ps[TC[i]].moveTo(x+r,y);ps[TC[i]].arc(x,y,r,0,6.2832);}
+    [2,1,0].forEach(c=>{ctx.globalAlpha=c===0?.55:.5;ctx.fillStyle=cols[c];ctx.fill(ps[c]);ctx.globalAlpha=1;ctx.lineWidth=1;ctx.strokeStyle=cols[c];ctx.stroke(ps[c]);});
+  }
+  // 地下管線（模擬）
+  if(lay.pipe&&z>=14){ctx.setLineDash([4,3]);ctx.strokeStyle=theme==='dark'?'#f2c46b':'#8a5a00';ctx.lineWidth=1.5;ctx.beginPath();
+    for(let s=0;s<N;s++){if(!S.pipe[s])continue;const x0=BB[s*4]*Sz-ox,y0=BB[s*4+1]*Sz-oy,x1=BB[s*4+2]*Sz-ox,y1=BB[s*4+3]*Sz-oy;if(x1<0||y1<0||x0>W||y0>Hh)continue;ctx.rect(x0-2,y0-2,x1-x0+4,y1-y0+4);}
+    ctx.stroke();ctx.setLineDash([]);}
+  // 都更、危老（模擬）
+  if(lay.ur){ctx.lineWidth=2;D.ur.x.forEach((x,i)=>{const [u,v]=toUV(x+M.mx0,D.ur.y[i]+M.my0);const px=u*Sz-ox,py=v*Sz-oy;if(px<-10||py<-10||px>W+10||py>Hh+10)return;
+    ctx.fillStyle=theme==='dark'?'#3a3120':'#f6e7c8';ctx.strokeStyle=theme==='dark'?'#f2c46b':'#8a5a00';ctx.beginPath();ctx.rect(px-5,py-5,10,10);ctx.fill();ctx.stroke();});}
+  // 目的地
+  const rpx=RADIUS/COS/(2*E)*Sz;
+  for(const d of dests){if(d.type==='park'&&!lay.parks)continue;const [u,v]=toUV(d.mx,d.my);const px=u*Sz-ox,py=v*Sz-oy;if(px<-rpx||py<-rpx||px>W+rpx||py>Hh+rpx)continue;
+    const c=DEST_TYPES[d.type].color,r=d.type==='park'?(z>=15?5:z>=14?3:1.6):(z>=15?6:z>=13?4.5:3.5);if(d.type==='park'&&z<14)ctx.globalAlpha=.6;ctx.fillStyle=c;ctx.strokeStyle=theme==='dark'?'#131a16':'#ffffff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(px,py,r,0,6.2832);ctx.fill();if(r>2)ctx.stroke();ctx.globalAlpha=1;}
+  // 選取的目的地：400 公尺圈
+  if(selD){const [u,v]=toUV(selD.mx,selD.my);const px=u*Sz-ox,py=v*Sz-oy;ctx.setLineDash([6,5]);ctx.lineWidth=2;ctx.strokeStyle=theme==='dark'?'#ffe680':'#1d2a22';ctx.beginPath();ctx.arc(px,py,rpx,0,6.2832);ctx.stroke();ctx.setLineDash([]);}
+  // 選取的路段
+  if(sel>=0){const p=new Path2D();for(let r=SR[sel];r<SR[sel+1];r++){const a=RING[r],b=RING[r+1];p.moveTo(U[a]*Sz-ox,V[a]*Sz-oy);for(let k=a+1;k<b;k++)p.lineTo(U[k]*Sz-ox,V[k]*Sz-oy);p.closePath();}
+    ctx.lineJoin='round';ctx.lineWidth=7;ctx.strokeStyle='#ffffff';ctx.stroke(p);ctx.lineWidth=3.5;ctx.strokeStyle=theme==='dark'?'#ffe680':'#1d2a22';ctx.stroke(p);}
+}
+
+/* ---------- 點選 ---------- */
+function pip(px,py,s,Sz,ox,oy){let ins=false;for(let r=SR[s];r<SR[s+1];r++){const a=RING[r],b=RING[r+1];for(let i=a,j=b-1;i<b;j=i++){const xi=U[i]*Sz-ox,yi=V[i]*Sz-oy,xj=U[j]*Sz-ox,yj=V[j]*Sz-oy;if(((yi>py)!==(yj>py))&&px<(xj-xi)*(py-yi)/(yj-yi)+xi)ins=!ins;}}return ins;}
+map.on('click',e=>{
+  const {z,S:Sz,ox,oy}=view(),px=e.containerPoint.x,py=e.containerPoint.y,tol=6;
+  // 目的地優先
+  let bd=null,bdd=81;for(const d of dests){if(d.type==='park'&&!lay.parks)continue;const [u,v]=toUV(d.mx,d.my);const dx=u*Sz-ox-px,dy=v*Sz-oy-py,dd=dx*dx+dy*dy;if(dd<bdd){bdd=dd;bd=d;}}
+  if(bd){selD=bd;sel=-1;showDest();draw();return;}
+  let best=-1,bdist=1e9;
+  for(let s=0;s<N;s++){const x0=BB[s*4]*Sz-ox-tol,y0=BB[s*4+1]*Sz-oy-tol,x1=BB[s*4+2]*Sz-ox+tol,y1=BB[s*4+3]*Sz-oy+tol;if(px<x0||px>x1||py<y0||py>y1)continue;
+    if(pip(px,py,s,Sz,ox,oy)){best=s;bdist=0;break;}const cx=(x0+x1)/2,cy=(y0+y1)/2,d=Math.hypot(cx-px,cy-py);if(d<bdist&&(x1-x0<20||y1-y0<20)){bdist=d;best=s;}}
+  sel=best;if(best>=0)selD=null;showDetail();draw();
+});
+
+/* ---------- 路段資料卡 ---------- */
+const det=document.getElementById('detail');
+function why(s){
+  const parts=[];
+  if(shade[s]<P.T*.5)parts.push('遮蔭不到目標的一半');
+  if(H[s]>.7)parts.push('周邊樹冠少、比較熱');
+  if(near[s]>=1)parts.push('靠近多個步行目的地');
+  return parts.length?parts.join('、')+'。':'';
+}
+function actWhy(s){
+  const a=act[s],w=S.width[s];
+  if(a===4)return '目前遮蔭已達目標。';
+  if(a===0)return S.eh[s]>0?`有 ${S.eh[s]} 個空樹穴可直接補植。`:`人行道寬 ${w} 公尺，扣除通行空間後仍有植樹空間。`;
+  if(a===2)return '旁邊有都更或危老案，可在審議時要求退縮空間植樹。';
+  if(a===1)return P.pipeOn&&S.pipe[s]?'有地下管線衝突，需遷移或改用淺根樹種。':`人行道寬 ${w} 公尺，需拓寬或改用停車格轉植樹帶。`;
+  return `人行道只有 ${w} 公尺，短期先設遮陽設施。`;
+}
+function showDetail(){
+  if(sel<0){if(!selD)det.hidden=true;return;}
+  const s=sel,a=ACT[act[s]],sc=Math.round(score[s]);
+  const ur=S.ur[s]>=0?`${D.ur.kind[S.ur[s]]}（${D.ur.stage[S.ur[s]]}，基地 ${nf(D.ur.area[S.ur[s]])} m²）`:'無';
+  const nd=[];for(const d of dests){const dx=(d.mx-CX[s])*COS,dy=(d.my-CY[s])*COS;if(dx*dx+dy*dy<=RADIUS*RADIUS)nd.push(d);}
+  const ndt=Object.entries(nd.reduce((m,d)=>(m[d.type]=(m[d.type]||0)+1,m),{})).map(([t,c])=>DEST_TYPES[t].name+' '+c).join('、')||'無';
+  det.innerHTML=`<button class="x" type="button" aria-label="關閉">×</button><div class="eyebrow">人行道路段 · ${esc(S.id[s])}</div>
+  <h2>${esc(S.road[s]||'（未命名道路）')} ${esc(S.side[s])}</h2><div class="dsub">${esc(S.ps[s])} 至 ${esc(S.pe[s])} · ${esc(S.dist[s])} · ${esc(S.code[s])}</div>
+  <div class="score"><b>${sc}</b><div class="bar"><span style="width:${sc}%;background:${ramp('score')[bucket(sc/100)]}"></span></div></div>
+  <div class="act" style="background:${a.color}22;color:${a.color};border:1px solid ${a.color}">${a.name}</div>
+  <p class="why">${esc(why(s))}${esc(actWhy(s))}</p>
+  <dl class="dl2">
+   <dt class="h">遮蔭</dt>
+   <dt>有效樹蔭</dt><dd>${pc(st[s])}（人行道上 ${S.nsw[s]} 棵樹）</dd>
+   <dt>騎樓遮蓋 <span class="sim">模擬</span></dt><dd>${pc(arc[s])}${P.arcOn?`，折算 ${pc(P.arcK)} 計入`:'，未計入'}</dd>
+   <dt>合計遮蔭率</dt><dd><b>${pc(shade[s])}</b>（目標 ${pc(P.T)}）</dd>
+   <dt>數樹估計</dt><dd>${pc(S.naive[s])}${S.nisl[s]?`（含附近分隔島 ${S.nisl[s]} 棵）`:''}</dd>
+   <dt class="h">熱與需求</dt>
+   <dt>熱暴露 <span class="est">推估</span></dt><dd>全市第 ${Math.round(H[s]*100)} 百分位；150 公尺內樹冠 ${pc(S.can150[s])}</dd>
+   <dt>400 公尺內目的地</dt><dd>${esc(ndt)}</dd>
+   <dt class="h">可種植性</dt>
+   <dt>人行道寬</dt><dd>${S.width[s]} 公尺</dd>
+   <dt>路寬 <span class="est">推估</span></dt><dd>${S.roadw[s]!=null?S.roadw[s]+' 公尺':'無法推估'}</dd>
+   <dt>空樹穴</dt><dd>${S.eh[s]} 個</dd>
+   <dt>地下管線 <span class="sim">模擬</span></dt><dd>${P.pipeOn?(S.pipe[s]?'有衝突':'無衝突'):'外掛圖層未開啟'}</dd>
+   <dt>都更、危老 <span class="sim">模擬</span></dt><dd>${esc(ur)}</dd>
+  </dl>`;
+  det.hidden=false;det.querySelector('.x').onclick=()=>{sel=-1;det.hidden=true;draw();};
+}
+
+/* ---------- 目的地報告卡 ---------- */
+function destStats(d){const ss=segsNear(d.mx,d.my,RADIUS);let a=0,w=0,hi=0;for(const s of ss){a+=shade[s]*S.area[s];w+=S.area[s];if(score[s]>=50)hi++;}return {ss,avg:w?a/w:0,hi};}
+function showDest(){
+  if(!selD){if(sel<0)det.hidden=true;return;}
+  const d=selD,t=DEST_TYPES[d.type],r=destStats(d);
+  const peers=dests.filter(x=>x.type===d.type);let rank=null;
+  if(peers.length>1&&peers.length<=3000){const avgs=peers.map(p=>destStats(p).avg);const my=r.avg;rank=1+avgs.filter(v=>v<my).length;}
+  const worst=r.ss.slice().sort((a,b)=>score[b]-score[a]).slice(0,5);
+  det.innerHTML=`<button class="x" type="button" aria-label="關閉">×</button><div class="eyebrow">${t.name}${d.real?'':' · 匯入資料'} · 步行 400 公尺報告卡</div>
+  <h2>${esc(d.name)}</h2><div class="dsub">400 公尺內 ${r.ss.length} 段人行道（以直線距離近似）</div>
+  <div class="score"><b>${pc(r.avg)}</b><div class="bar"><span style="width:${Math.min(100,r.avg/0.5*100)}%;background:${ramp('shade')[bucket(r.avg/0.5)]}"></span></div></div>
+  <dl class="dl2"><dt>平均遮蔭率</dt><dd>${pc(r.avg)}（目標 ${pc(P.T)}）</dd><dt>高優先路段</dt><dd>${r.hi} 段</dd>
+  ${rank?`<dt>同類排名</dt><dd>全市 ${peers.length} 個${t.name}中，遮蔭第 ${rank} 低</dd>`:''}</dl>
+  <div class="lab" style="margin-top:12px">最需要改善的路段</div><div class="mini">${worst.map((s,i)=>`<button type="button" class="ti" data-s="${s}"><b>${i+1}</b><span>${esc(S.road[s]+' '+S.side[s])}・${ACT[act[s]].name}</span><em>${Math.round(score[s])}</em></button>`).join('')||'<span class="dsub">沒有路段</span>'}</div>`;
+  det.hidden=false;det.querySelector('.x').onclick=()=>{selD=null;det.hidden=true;draw();};
+  det.querySelectorAll('.ti').forEach(b=>b.onclick=()=>focusSeg(+b.dataset.s));
+}
+function focusSeg(s){sel=s;selD=null;const lat=latOf(CY[s]),lon=CX[s]/6378137*180/Math.PI;map.setView([lat,lon],Math.max(map.getZoom(),17));showDetail();draw();}
+
+/* ---------- 面板 ---------- */
+function updateKPI(){
+  let a=0,b=0,c=0,w=0,hi=0;for(let s=0;s<N;s++){if(!pass[s])continue;a+=st[s]*S.area[s];c+=shade[s]*S.area[s];b+=S.naive[s]*S.area[s];w+=S.area[s];if(score[s]>=50)hi++;}
+  document.getElementById('kShade').textContent=w?pc(a/w):'–';document.getElementById('kNaive').textContent=w?pc(b/w):'';document.getElementById('kAll').textContent=w?pc(c/w):'–';
+  document.getElementById('kHigh').textContent=nf(hi);
+  document.getElementById('kTrees').textContent=nf(M.n_tree_sw);
+  document.getElementById('kTreesL').textContent=`棵行道樹真正遮到人行道（共 ${nf(M.n_tree)} 棵，分隔島 ${nf(M.n_tree_island)} 棵）`;
+}
+function renderLegend(){
+  const el=document.getElementById('legend');
+  if(mode==='action'){el.innerHTML='<div class="cats">'+ACT.map(a=>`<span><i style="background:${a.color}"></i>${a.name}</span>`).join('')+'</div>';return;}
+  const r=palette(),labels=mode==='score'?['0','50','100']:['0%','25%','50%+'];
+  el.innerHTML=`<div class="ramp" style="background:linear-gradient(90deg,${r.join(',')})"></div><div class="rampl"><span>${labels[0]}</span><span>${labels[1]}</span><span>${labels[2]}</span></div>`+
+    (mode==='naive'?'<div class="sub">把附近 10 公尺內所有樹（含分隔島）的樹冠都算進來，會高估行人得到的蔭。</div>':mode==='shade'?'<div class="sub">樹冠與人行道面的重疊面積，加上騎樓折算。</div>':'');
+}
+function renderTop(){
+  const idx=[];for(let s=0;s<N;s++)if(pass[s]&&score[s]>0)idx.push(s);idx.sort((a,b)=>score[b]-score[a]);
+  document.getElementById('top').innerHTML=idx.slice(0,8).map((s,i)=>`<button type="button" class="ti" data-s="${s}"><b>${i+1}</b><span>${esc(S.road[s]+' '+S.side[s])}・${esc(S.dist[s])}・${ACT[act[s]].name}</span><em>${Math.round(score[s])}</em></button>`).join('')||'<span class="sub">沒有符合條件的路段</span>';
+  document.querySelectorAll('#top .ti').forEach(b=>b.onclick=()=>focusSeg(+b.dataset.s));
+}
+function renderDests(){
+  const c={};dests.forEach(d=>c[d.type]=(c[d.type]||0)+1);
+  document.getElementById('dests').innerHTML=Object.entries(c).map(([t,n])=>`<div class="dl"><i style="background:${DEST_TYPES[t].color}"></i><span>${DEST_TYPES[t].name}${t==='park'?'（真實）':'（匯入）'}</span><em>${nf(n)}</em></div>`).join('')+
+    (dests.some(d=>d.type==='mrt')?'':'<div class="sub">匯入捷運出入口或學校 CSV 後，使用強度與報告卡就會納入。</div>');
+  document.getElementById('destList').innerHTML=dests.map(d=>`<option value="${esc(d.name)}">`).join('');
+}
+const dsel=document.getElementById('fDist');
+[...new Set(S.dist)].filter(Boolean).sort().forEach(d=>dsel.insertAdjacentHTML('beforeend',`<option>${d}</option>`));
+const bind=(id,fn)=>document.getElementById(id).addEventListener('input',fn);
+bind('T',e=>{P.T=+e.target.value/100;logp('目標遮蔭率',e.target.value+'%');document.getElementById('Tv').textContent=e.target.value+'%';recompute();});
+['wH','wU'].forEach(k=>bind(k,e=>{P[k]=+e.target.value;logp({wH:'熱暴露權重',wU:'使用強度權重'}[k],e.target.value);document.getElementById(k+'v').textContent=e.target.value;recompute();}));
+bind('arcK',e=>{P.arcK=+e.target.value/100;logp('騎樓折算',e.target.value+'%');document.getElementById('arcKv').textContent=e.target.value+'%';recompute();});
+document.getElementById('arcOn').onchange=e=>{P.arcOn=e.target.checked;logp('騎樓',P.arcOn?'計入':'不計入');document.getElementById('arcRow').style.opacity=P.arcOn?1:.4;recompute();};
+dsel.onchange=e=>{P.dist=e.target.value;logp('行政區',P.dist||'全市');recompute();};
+document.getElementById('fRoad').onchange=e=>{P.road=+e.target.value;logp('路寬篩選',P.road?P.road+' 公尺以上':'全部');recompute();};
+document.getElementById('fNear').onchange=e=>{P.near=e.target.checked;logp('目的地 400 公尺內',P.near?'是':'否');recompute();};
+document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;document.querySelectorAll('#mode button').forEach(o=>o.setAttribute('aria-pressed',o===b));renderLegend();cache=null;draw();});
+const lay={trees:true,parks:true,ur:false,pipe:false};
+document.getElementById('lyTrees').onchange=e=>{lay.trees=e.target.checked;draw();};
+document.getElementById('lyParks').onchange=e=>{lay.parks=e.target.checked;draw();};
+document.getElementById('lyUR').onchange=e=>{lay.ur=e.target.checked;draw();};
+document.getElementById('lyPipe').onchange=e=>{lay.pipe=e.target.checked;P.pipeOn=e.target.checked;recompute();};
+const dimIn=document.getElementById('dimIn');
+function applyDim(v){map.getPane('tilePane').style.opacity=v/100;document.getElementById('dimOut').textContent=v+'%';}
+dimIn.oninput=()=>applyDim(+dimIn.value);
+document.getElementById('destQ').addEventListener('change',e=>{const d=dests.find(x=>x.name===e.target.value.trim());if(!d){toast('找不到這個目的地');return;}
+  selD=d;sel=-1;map.setView([latOf(d.my),d.mx/6378137*180/Math.PI],16);showDest();draw();e.target.value='';});
+
+/* ---------- 參數調整紀錄（寫進提案單） ---------- */
+const plog=[];let plogT=0;
+function logp(label,value){const now=new Date();const t=now.toTimeString().slice(0,8);
+  const last=plog[plog.length-1];if(last&&last.label===label&&now-plogT<4000){last.value=value;last.t=t;}else plog.push({t,label,value});plogT=now;}
+
+/* ---------- 儀表板 ---------- */
+const dash=document.getElementById('dash');
+function scopeText(){const p=[];p.push(P.dist||'全市');if(P.road)p.push('路寬 '+P.road+' 公尺以上（推估）');if(P.near)p.push('步行目的地 400 公尺內');return p.join('・');}
+function paramText(){return `目標遮蔭率 ${pc(P.T)}・權重 熱暴露 ${P.wH}／使用強度 ${P.wU}・騎樓${P.arcOn?'折算 '+pc(P.arcK)+' 計入':'不計入'}・管線圖層${P.pipeOn?'開啟':'未開啟'}`;}
+// 只換騎樓設定、不改畫面狀態，算高優先路段數
+function highCount(arcOn,arcK,distOnly){const ws=P.wH+P.wU||1;let n=0;
+  for(let s=0;s<N;s++){if(!pass[s])continue;if(distOnly&&!distOnly.includes(S.dist[s]))continue;
+    const sh=Math.min(1,st[s]+(arcOn?arcK*arc[s]*(1-st[s]):0));const gap=Math.max(0,(P.T-sh)/P.T);
+    const sc=100*gap*(P.wH*H[s]+P.wU*Math.min(1,near[s]/1.5))/ws;if(sc>=50)n++;}return n;}
+function inScope(s){const rw=S.roadw[s];return (!P.road||(rw!=null&&rw>=P.road))&&(!P.near||nearAny[s]);}
+function distStats(){const m={};
+  for(let s=0;s<N;s++){if(!inScope(s)||!S.dist[s])continue;const d=m[S.dist[s]]||(m[S.dist[s]]={n:0,a:0,t:0,sh:0,hi:0,act:[0,0,0,0,0]});
+    d.n++;d.a+=S.area[s];d.t+=st[s]*S.area[s];d.sh+=shade[s]*S.area[s];if(score[s]>=50){d.hi++;d.act[act[s]]++;}}
+  return Object.entries(m).map(([k,v])=>({k,n:v.n,tree:v.t/v.a,shade:v.sh/v.a,hi:v.hi,act:v.act})).sort((a,b)=>b.hi-a.hi);}
+function scopeStats(){let n=0,a=0,t=0,sh=0,nv=0,hi=0;const ac=[0,0,0,0,0];const top=[];
+  for(let s=0;s<N;s++){if(!pass[s])continue;n++;a+=S.area[s];t+=st[s]*S.area[s];sh+=shade[s]*S.area[s];nv+=S.naive[s]*S.area[s];if(score[s]>=50){hi++;ac[act[s]]++;}if(score[s]>0)top.push(s);}
+  top.sort((x,y)=>score[y]-score[x]);return {n,tree:a?t/a:0,shade:a?sh/a:0,naive:a?nv/a:0,hi,ac,top};}
+function destSummary(){const out=[];for(const [t,info] of Object.entries(DEST_TYPES)){if(t==='park')continue;const ds=dests.filter(d=>d.type===t);if(!ds.length)continue;
+    const rows=ds.map(d=>({d,...destStats(d)})).filter(r=>r.ss.length);rows.sort((a,b)=>a.avg-b.avg);
+    out.push({t,name:info.name,n:ds.length,avg:rows.reduce((x,r)=>x+r.avg,0)/(rows.length||1),worst:rows.slice(0,5)});}
+  return out;}
+let propNo='';
+function openDash(){
+  const now=new Date(),z=n=>String(n).padStart(2,'0');
+  propNo=`TPSHADE-${now.getFullYear()}${z(now.getMonth()+1)}${z(now.getDate())}-${z(now.getHours())}${z(now.getMinutes())}`;
+  const sc=scopeStats(),ds=distStats(),dsum=destSummary();
+  const hiOff=highCount(false,0),hiOn=highCount(true,P.arcK),old=['大同區','萬華區','中正區'];
+  const oldOff=highCount(false,0,old),oldOn=highCount(true,P.arcK,old);
+  document.getElementById('dTitle').textContent=`${scopeText()}：${nf(sc.hi)} 段高優先路段，有效樹蔭 ${pc(sc.tree)}`;
+  document.getElementById('dScope').textContent=`提案編號 ${propNo}・${paramText()}・資料整理 ${M.built}`;
+  const maxT=Math.max(...ds.map(d=>d.tree),.01);
+  const actBar=ac=>{const tot=ac.slice(0,4).reduce((a,b)=>a+b,0)||1;return '<div class="stack">'+ac.slice(0,4).map((v,i)=>v?`<span style="width:${v/tot*100}%;background:${ACT[i].color}" title="${ACT[i].name} ${v}"></span>`:'').join('')+'</div>';};
+  const topRows=sc.top.slice(0,12).map((s,i)=>`<tr class="click" data-s="${s}"><td>${i+1}. ${esc(S.road[s]+' '+S.side[s])}</td><td>${esc(S.dist[s])}</td><td>${Math.round(score[s])}</td><td>${pc(shade[s])}</td><td>${ACT[act[s]].name}</td></tr>`).join('');
+  const sensW=Math.max(hiOff,hiOn,1);
+  document.getElementById('dBody').innerHTML=`
+  <div class="full dk">
+    <div class="kpi"><b>${nf(sc.n)}</b><span>段人行道（範圍內）</span></div>
+    <div class="kpi"><b>${pc(sc.tree)}</b><span>有效樹蔭率</span></div>
+    <div class="kpi"><b>${pc(sc.naive)}</b><span>數樹估計（含分隔島）</span></div>
+    <div class="kpi"><b>${pc(sc.shade)}</b><span>合計遮蔭（含騎樓折算）</span></div>
+    <div class="kpi"><b>${nf(sc.hi)}</b><span>段高優先（分數 ≥ 50）</span></div>
+    <div class="kpi"><b>${nf(sc.ac[0])}</b><span>段高優先且可直接種</span></div>
+  </div>
+  <div class="dcard"><h3>各行政區比較</h3><div class="sub">依高優先路段數排序；點一列可套用該區篩選。</div><div class="tw"><table class="dt"><thead><tr><th>行政區</th><th>路段</th><th>有效樹蔭</th><th>合計遮蔭</th><th>高優先</th><th>可直接種</th><th>需工程</th><th>等重建</th><th>短期替代</th></tr></thead><tbody>
+    ${ds.map(d=>`<tr class="click${d.k===P.dist?' on':''}" data-d="${esc(d.k)}"><td>${esc(d.k)}</td><td>${nf(d.n)}</td><td><div class="cell-bar"><i style="width:${d.tree/maxT*48}px"></i>${pc(d.tree)}</div></td><td>${pc(d.shade)}</td><td><b>${nf(d.hi)}</b></td><td>${nf(d.act[0])}</td><td>${nf(d.act[1])}</td><td>${nf(d.act[2])}</td><td>${nf(d.act[3])}</td></tr>`).join('')}
+  </tbody></table></div></div>
+  <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+    <div class="dcard"><h3>高優先路段要怎麼做</h3><div class="sub">範圍內 ${nf(sc.hi)} 段高優先路段的行動類型。</div>${actBar(sc.ac)}
+      <div class="cats">${ACT.slice(0,4).map((a,i)=>`<span><i style="background:${a.color}"></i>${a.name} ${nf(sc.ac[i])} 段</span>`).join('')}</div></div>
+    <div class="dcard"><h3>騎樓算不算蔭，差多少 <span class="sim">騎樓為模擬資料</span></h3><div class="sub">其他條件不變，只改騎樓設定的高優先路段數。</div>
+      <div class="sens"><span>不計入騎樓</span><i style="width:${hiOff/sensW*100}%"></i><em>${nf(hiOff)}</em>
+      <span>折算 ${pc(P.arcK)} 計入</span><i style="width:${hiOn/sensW*100}%"></i><em>${nf(hiOn)}</em></div>
+      <div class="sub" style="margin-top:8px">大同、萬華、中正三區：${nf(oldOff)} 段 → ${nf(oldOn)} 段。騎樓多的舊市區，排序受這個設定影響最大。</div></div>
+    ${dsum.length?`<div class="dcard"><h3>步行目的地</h3>${dsum.map(x=>`<div class="sub">${x.name} ${nf(x.n)} 個，400 公尺內平均遮蔭 ${pc(x.avg)}；最缺蔭：${x.worst.map(r=>esc(r.d.name)+' '+pc(r.avg)).join('、')}</div>`).join('')}</div>`:''}
+  </div>
+  <div class="dcard"><h3>優先路段（前 12 段）</h3><div class="sub">點一列回到地圖並開啟該路段資料卡。</div><div class="tw"><table class="dt"><thead><tr><th>路段</th><th>行政區</th><th>分數</th><th>合計遮蔭</th><th>行動</th></tr></thead><tbody>${topRows||'<tr><td colspan="5">沒有符合條件的路段</td></tr>'}</tbody></table></div></div>
+  <div class="dcard"><h3>植樹提案單</h3><div class="sub">可直接貼進簡報或公文；同樣的參數任何人都能重算出相同結果。</div>
+    <textarea id="rep" readonly aria-label="植樹提案單文字"></textarea>
+    <div class="btnrow"><button type="button" class="btn solid" id="repDl">下載提案單</button><button type="button" class="btn" id="repCp">複製文字</button><button type="button" class="btn" id="repCsv">下載路段清單 CSV</button></div></div>`;
+  document.getElementById('rep').value=buildProposal(sc,ds,dsum,hiOff,hiOn);
+  dash.querySelectorAll('tr[data-d]').forEach(tr=>tr.onclick=()=>{const v=tr.dataset.d===P.dist?'':tr.dataset.d;P.dist=v;dsel.value=v;logp('行政區',v||'全市');recompute();openDash();});
+  dash.querySelectorAll('tr[data-s]').forEach(tr=>tr.onclick=()=>{dash.hidden=true;focusSeg(+tr.dataset.s);});
+  document.getElementById('repDl').onclick=()=>{download(`shade_proposal_${propNo.slice(8).replace('-','_')}.txt`,'\uFEFF'+document.getElementById('rep').value,'text/plain;charset=utf-8');toast('已下載提案單');};
+  document.getElementById('repCp').onclick=()=>{const ta=document.getElementById('rep');
+    const done=()=>toast('已複製提案單文字');const fb=()=>{ta.focus();ta.select();try{document.execCommand('copy')?done():toast('請按 Ctrl＋C 或 ⌘＋C 複製已選取的文字');}catch(e){toast('請按 Ctrl＋C 或 ⌘＋C 複製已選取的文字');}};
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(ta.value).then(done,fb);else fb();};
+  document.getElementById('repCsv').onclick=()=>document.getElementById('exportBtn').click();
+  dash.hidden=false;
+}
+function buildProposal(sc,ds,dsum,hiOff,hiOn){
+  const L=[],line='─'.repeat(28);const now=new Date();
+  L.push('臺北樹蔭公平：植樹提案單');L.push(line);
+  L.push(`提案編號：${propNo}`);L.push(`產生時間：${now.toLocaleString('zh-TW',{hour12:false})}`);L.push(`資料整理日期：${M.built}`);
+  L.push(`範圍：${scopeText()}`);L.push(`參數：${paramText()}`);L.push('');
+  L.push('一、結論');
+  L.push(`範圍內 ${nf(sc.n)} 段人行道，有效樹蔭率 ${pc(sc.tree)}；若用「數樹」把分隔島與綠帶的樹也算入，會估成 ${pc(sc.naive)}。`);
+  L.push(`依目前參數，有 ${nf(sc.hi)} 段高優先路段（分數 50 以上），其中 ${nf(sc.ac[0])} 段可直接種、${nf(sc.ac[1])} 段需工程、${nf(sc.ac[2])} 段等重建、${nf(sc.ac[3])} 段需短期替代。`);
+  L.push(`騎樓設定影響：不計入騎樓時為 ${nf(hiOff)} 段，${P.arcOn?'折算 '+pc(P.arcK)+' 計入':'計入'}時為 ${nf(hiOn)} 段（騎樓為模擬資料）。`);L.push('');
+  L.push('二、建議優先處理的路段');
+  sc.top.slice(0,20).forEach((s,i)=>L.push(`${String(i+1).padStart(2,' ')}. ${S.road[s]} ${S.side[s]}（${S.ps[s]} 至 ${S.pe[s]}，${S.dist[s]}）分數 ${Math.round(score[s])}，遮蔭 ${pc(shade[s])}，人行道寬 ${S.width[s]} 公尺，建議：${ACT[act[s]].name}。路段編號 ${S.id[s]}`));
+  if(!sc.top.length)L.push('（沒有符合條件的路段）');L.push('');
+  if(!P.dist){L.push('三、各行政區');ds.forEach(d=>L.push(`${d.k}：有效樹蔭 ${pc(d.tree)}，高優先 ${nf(d.hi)} 段（可直接種 ${nf(d.act[0])}、需工程 ${nf(d.act[1])}、等重建 ${nf(d.act[2])}、短期替代 ${nf(d.act[3])}）`));L.push('');}
+  if(dsum.length){L.push((P.dist?'三':'四')+'、步行目的地');dsum.forEach(x=>L.push(`${x.name} ${nf(x.n)} 個，400 公尺內平均遮蔭 ${pc(x.avg)}；最缺蔭：${x.worst.map(r=>r.d.name+' '+pc(r.avg)).join('、')}`));L.push('');}
+  L.push('後續流程');
+  L.push('1. 現場確認：公園處、新工處會勘管線、寬度與空樹穴，回填可種、不可種與原因。');
+  L.push('2. 列入計畫：確認可種的路段列入年度植樹計畫；「等重建」路段轉都市更新處，於審議時要求退縮植樹。');
+  L.push('3. 追蹤成效：每年依相同參數重算，檢視高優先路段是否減少。');L.push('');
+  if(plog.length){L.push('參數調整紀錄');plog.forEach(p=>L.push(`${p.t} ${p.label} → ${p.value}`));L.push('');}
+  L.push('資料說明');
+  L.push('真實資料：行道樹、人行道範圍、樹穴、公園（臺北市開放資料）。');
+  L.push('推估：樹冠半徑（依胸徑）、路寬（對側人行道距離）、熱暴露（周邊 150 公尺樹冠與公園距離，非實測地表溫度）。');
+  L.push('模擬：騎樓、地下管線、都更危老基地，僅供展示方法，不可作為實際決策依據。');
+  L.push('未納入：脆弱族群（長者、孩童、低收），待釐清與熱危害的關聯後再加入。');
+  L.push('目的地 400 公尺以直線距離近似。');
+  return L.join('\n');
+}
+function download(name,text,mime){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:mime}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}
+document.getElementById('dashBtn').onclick=openDash;
+document.getElementById('dashClose').onclick=()=>{dash.hidden=true;};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!dash.hidden)dash.hidden=true;});
+
+/* ---------- 匯出 ---------- */
+document.getElementById('exportBtn').onclick=()=>{
+  const idx=[];for(let s=0;s<N;s++)if(pass[s]&&score[s]>0)idx.push(s);idx.sort((a,b)=>score[b]-score[a]);
+  const head=['排名','路段編號','路名','側別','起點','終點','行政區','優先分數','行動類型','有效樹蔭率','騎樓遮蓋率_模擬','合計遮蔭率','人行道寬_公尺','路寬推估_公尺','空樹穴','都更危老_模擬','中心經度','中心緯度'];
+  const q=v=>{v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  const rows=idx.map((s,i)=>[i+1,S.id[s],S.road[s],S.side[s],S.ps[s],S.pe[s],S.dist[s],Math.round(score[s]),ACT[act[s]].name,pc(st[s]),pc(arc[s]),pc(shade[s]),S.width[s],S.roadw[s]??'',S.eh[s],S.ur[s]>=0?D.ur.kind[S.ur[s]]+D.ur.stage[S.ur[s]]:'',(CX[s]/6378137*180/Math.PI).toFixed(6),latOf(CY[s]).toFixed(6)]);
+  const csv='﻿'+[head,...rows].map(r=>r.map(q).join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='shade_priority_segments.csv';
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);toast('已匯出 '+nf(rows.length)+' 段路段');
+};
+
+/* ---------- 匯入目的地 CSV ---------- */
+const TWD97='+proj=tmerc +lat_0=0 +lon_0=121 +k=0.9999 +x_0=250000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs';
+const norm=s=>String(s).toLowerCase().replace(/[\s_\-().（）]/g,'');
+function pickField(fields,list,ends){const nfs=fields.map(norm);for(const n of list){const k=nfs.indexOf(n);if(k>=0)return fields[k];}return fields.find((f,i)=>ends.some(e=>nfs[i].endsWith(e)))||null;}
+async function importDest(file,type){
+  const buf=await file.arrayBuffer();let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(buf);}catch(e){text=new TextDecoder('big5').decode(buf);}
+  let rows,fields;
+  if(/^\s*[\[{]/.test(text)){const j=JSON.parse(text);rows=Array.isArray(j)?j:(j.result&&j.result.results)||j.features||[];if(rows[0]&&rows[0].properties)rows=rows.map(f=>Object.assign({},f.properties,f.geometry&&f.geometry.type==='Point'?{lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1]}:{}));fields=Object.keys(rows[0]||{});}
+  else{const r=Papa.parse(text,{header:true,skipEmptyLines:'greedy',transformHeader:h=>h.trim()});rows=r.data;fields=r.meta.fields||[];}
+  const lo=pickField(fields,['lon','lng','longitude','經度','positionlon','wgs84經度'],['longitude','經度','lon']);
+  const la=pickField(fields,['lat','latitude','緯度','positionlat','wgs84緯度'],['latitude','緯度','lat']);
+  const x97=pickField(fields,['twd97x','x','x坐標','x座標','坐標x','座標x'],[]),y97=pickField(fields,['twd97y','y','y坐標','y座標','坐標y','座標y'],[]);
+  const nmF=pickField(fields,['出入口名稱','出入口電梯無障礙坡道名稱','站名','車站名稱','學校名稱','名稱','name','stopname','站位名稱','站牌名稱'],['名稱','name']);
+  const tr=proj4(TWD97,'+proj=longlat +datum=WGS84 +no_defs');let n=0;
+  for(const r of rows){let x=+String(r[lo]??'').trim(),y=+String(r[la]??'').trim();
+    if(!(isFinite(x)&&isFinite(y)&&x&&y)&&x97&&y97){const a=+r[x97],b=+r[y97];if(isFinite(a)&&a>100000){[x,y]=tr.forward([a,b]);}}
+    if(!isFinite(x)||!isFinite(y)||!x||!y)continue;if(Math.abs(x)<90&&Math.abs(y)>90)[x,y]=[y,x];
+    if(x<121.3||x>121.8||y<24.8||y>25.3)continue;
+    const mx=x*Math.PI/180*6378137,my=Math.log(Math.tan(Math.PI/4+y*Math.PI/360))*6378137;
+    dests.push({type,name:String(r[nmF]??(DEST_TYPES[type].name+' '+(n+1))).trim()||DEST_TYPES[type].name,mx,my,real:false});n++;}
+  if(!n){toast('這個檔案找不到臺北範圍內的經緯度或 TWD97 座標',6000);return;}
+  computeU();renderDests();recompute();toast(`已匯入 ${nf(n)} 個${DEST_TYPES[type].name}`,4000);
+}
+document.getElementById('destFile').onchange=e=>{const f=e.target.files[0];if(f)importDest(f,document.getElementById('destType').value);e.target.value='';};
+const ov=document.getElementById('dragOverlay');let dd=0;const hasF=e=>e.dataTransfer&&[...e.dataTransfer.types].includes('Files');
+window.addEventListener('dragenter',e=>{if(!hasF(e))return;e.preventDefault();dd++;ov.hidden=false;});
+window.addEventListener('dragover',e=>{if(hasF(e))e.preventDefault();});
+window.addEventListener('dragleave',e=>{if(!hasF(e))return;dd=Math.max(0,dd-1);if(!dd)ov.hidden=true;});
+window.addEventListener('drop',e=>{if(!hasF(e))return;e.preventDefault();dd=0;ov.hidden=true;const f=e.dataTransfer.files[0];if(f){const nm=f.name.toLowerCase();const t=/mrt|捷運|出入口|exit/.test(nm)?'mrt':/school|學校|國小|國中/.test(nm)?'school':/bus|公車|站牌/.test(nm)?'bus':document.getElementById('destType').value;importDest(f,t);}});
+
+/* ---------- 其他 ---------- */
+const toastEl=document.getElementById('toast');let tt=0;function toast(m,ms){toastEl.textContent=m;toastEl.hidden=false;clearTimeout(tt);tt=setTimeout(()=>toastEl.hidden=true,ms||3200);}
+const themeBtn=document.getElementById('themeBtn');let base=null;
+function setBase(l){if(base)map.removeLayer(base);l.addTo(map);base=l;}
+function applyTheme(t){theme=t;document.documentElement.setAttribute('data-theme',t);setBase(t==='dark'?osmD:osmL);themeBtn.textContent=t==='dark'?'☀ 淺色':'☾ 深色';renderLegend();if(sel>=0)showDetail();cache=null;draw();}
+themeBtn.onclick=()=>applyTheme(theme==='dark'?'light':'dark');
+const panel=document.getElementById('panel'),sb=document.getElementById('sheetBtn');
+sb.onclick=()=>{panel.classList.toggle('collapsed');sb.textContent=panel.classList.contains('collapsed')?'面板':'收合';};
+L.DomEvent.disableClickPropagation(dash);L.DomEvent.disableScrollPropagation(dash);L.DomEvent.disableClickPropagation(panel);L.DomEvent.disableScrollPropagation(panel);L.DomEvent.disableClickPropagation(det);L.DomEvent.disableScrollPropagation(det);
+document.getElementById('note').innerHTML=`<b>資料說明</b>：行道樹 ${nf(M.n_tree)} 棵、人行道 ${nf(N)} 段、樹穴 ${nf(M.n_hole)} 處、公園 ${nf(D.park.x.length)} 座為臺北市開放資料。樹冠以胸徑推估（0.8 + 0.055 × 胸徑，1–8 公尺）。熱暴露以周邊 150 公尺樹冠與離大公園距離推估，非實測地表溫度。<b>騎樓、地下管線、都更危老基地為模擬資料</b>，僅供展示方法。脆弱族群（長者、孩童、低收）尚未納入，待釐清與熱危害的關聯後再加入。目的地 400 公尺以直線距離近似，正式版改用步行路網。資料整理日期 ${M.built}。`;
+
+window.__mvp={map,dests,score,shade,P,recompute,importDest,openDash};
+applyTheme('light');applyDim(70);computeU();renderDests();recompute();resize();
+}
+/* ---------- 資料載入：單檔版讀內嵌資料；GAS 版先開網頁，再讀壓縮後的資料 ---------- */
+(function(){
+  const box=document.getElementById('loading');
+  const fail=m=>{box.innerHTML='<div><b>資料載入失敗</b><br>'+m+'</div>';};
+  const inline=document.getElementById('data');
+  if(inline&&inline.textContent.trim().charAt(0)==='{'){box.remove();APP(JSON.parse(inline.textContent));return;}
+  async function unpack(b64){
+    const bin=atob(b64.trim()),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+    if(typeof DecompressionStream==='undefined')throw new Error('瀏覽器不支援解壓縮，請改用新版 Chrome、Edge、Safari 或 Firefox');
+    const txt=await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    return JSON.parse(txt);
+  }
+  const start=b64=>unpack(b64).then(D=>{box.remove();APP(D);}).catch(e=>fail(e.message));
+  if(window.google&&google.script&&google.script.run){
+    google.script.run.withSuccessHandler(start).withFailureHandler(e=>fail(String(e&&e.message||e))).getData();
+  }else fail('找不到資料來源。');
+})();
+</script>
+</body>
+</html>
