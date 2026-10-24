@@ -4,7 +4,7 @@
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>臺北樹蔭公平地圖</title>
+<title>樹蔭公平提案單</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@800&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -159,13 +159,13 @@ textarea#rep{width:100%;min-height:260px;font:12.5px/1.6 var(--f-mono);padding:1
 </head>
 <body>
 <div id="app">
-  <div id="loading"><div><b>臺北樹蔭公平地圖</b><br>載入資料中，約需數秒⋯</div></div>
+  <div id="loading"><div><b>樹蔭公平提案單</b><br>載入資料中，約需數秒⋯</div></div>
   <div id="map" aria-label="地圖"></div>
 
   <aside id="panel">
     <div class="phead">
       <div class="eyebrow">市政 debug 松 · 題目 #1</div>
-      <h1>臺北樹蔭公平地圖</h1>
+      <h1>樹蔭公平提案單</h1>
       <div class="sub">每段人行道算一個優先分數：缺蔭越嚴重、越熱、越多人使用，分數越高。點路段看原因與建議做法。</div>
       <div class="hbtns"><button id="themeBtn" class="pill" type="button">☾ 深色</button><button id="sheetBtn" class="pill" type="button">收合</button></div>
     </div>
@@ -623,7 +623,7 @@ function openDash(){
 }
 function buildProposal(sc,ds,dsum,hiOff,hiOn){
   const L=[],line='─'.repeat(28);const now=new Date();
-  L.push('臺北樹蔭公平：植樹提案單');L.push(line);
+  L.push('樹蔭公平提案單｜植樹提案');L.push(line);
   L.push(`提案編號：${propNo}`);L.push(`產生時間：${now.toLocaleString('zh-TW',{hour12:false})}`);L.push(`資料整理日期：${M.built}`);
   L.push(`範圍：${scopeText()}`);L.push(`參數：${paramText()}`);L.push('');
   L.push('一、結論');

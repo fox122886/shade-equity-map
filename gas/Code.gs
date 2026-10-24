@@ -1,5 +1,5 @@
 /**
- * 臺北樹蔭公平地圖（市政 debug 松 MVP）
+ * 樹蔭公平提案單（市政 debug 松 MVP）
  * 網頁 Index.html 與壓縮後的資料 shade_data.txt 都放在雲端硬碟資料夾「市政松練習」。
  * 網頁先開啟，再透過 getData() 讀取資料，避免一次傳送 6 MB 而卡住。
  * 更新網頁或資料時，只要替換資料夾裡的檔案，再執行一次 clearCache，不必重新部署。
@@ -10,7 +10,7 @@ const DATA_FILE = 'shade_data.txt';
 
 function doGet() {
   return HtmlService.createHtmlOutput(readText_(PAGE_FILE))
-    .setTitle('臺北樹蔭公平地圖')
+    .setTitle('樹蔭公平提案單')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
