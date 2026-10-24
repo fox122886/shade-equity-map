@@ -143,4 +143,4 @@ python build.py       # 產生根目錄的 index.html
 
 ## 授權
 
-開放資料依[政府資料開放授權條款－第 1 版](https://data.gov.tw/license)使用；底圖 © OpenStreetMap 貢獻者。作品授權由團隊決定，主辦單位建議 MIT 或 CC BY 4.0。
+本專案的程式碼與文件以 [MIT 授權](LICENSE)釋出。`data/` 裡的臺北市開放資料依[政府資料開放授權條款－第 1 版](https://data.gov.tw/license)使用，不受 MIT 授權影響；底圖 © OpenStreetMap 貢獻者。
